@@ -17,6 +17,7 @@ import { useToast } from '../../lib/ToastContext';
 import { doc, getDoc, collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { createPortal } from 'react-dom';
+import { useFollowingIds } from '../../lib/follows';
 
 const LazyFallback = () => (
   <div className="flex items-center justify-center p-4">
@@ -32,7 +33,7 @@ interface LikerUser {
   username?: string;
 }
 
-function LikedByModal({ postId, count, onClose }: { postId: string; count: number; onClose: () => void }) {
+function LikedByModal({ postId, count, followingIds, onClose }: { postId: string; count: number; followingIds: Set<string>; onClose: () => void }) {
   const [likers, setLikers] = useState<LikerUser[]>([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
@@ -61,7 +62,12 @@ function LikedByModal({ postId, count, onClose }: { postId: string; count: numbe
             return { uid, name: 'User' };
           })
         );
-        if (!cancelled) setLikers(users);
+        const sorted = [...users].sort((a, b) => {
+          const aFollowed = followingIds.has(a.uid) ? 0 : 1;
+          const bFollowed = followingIds.has(b.uid) ? 0 : 1;
+          return aFollowed - bFollowed;
+        });
+        if (!cancelled) setLikers(sorted);
       } catch {}
       if (!cancelled) setLoading(false);
     };
@@ -81,7 +87,7 @@ function LikedByModal({ postId, count, onClose }: { postId: string; count: numbe
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-luxury-ink/30 backdrop-blur-sm"
+      className="fixed inset-0 z-200 flex items-center justify-center p-4 bg-luxury-ink/30 backdrop-blur-sm"
       onClick={onClose}
     >
       <motion.div
@@ -135,12 +141,15 @@ function LikedByModal({ postId, count, onClose }: { postId: string; count: numbe
                       name={liker.name}
                       size={36}
                     />
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="text-[14px] font-semibold text-luxury-ink truncate">{liker.name}</p>
                       {liker.username && (
                         <p className="text-[11px] text-luxury-ink/40 font-medium">@{liker.username}</p>
                       )}
                     </div>
+                    {followingIds.has(liker.uid) && (
+                      <span className="text-[10px] font-bold text-brand-teal uppercase tracking-wide shrink-0">Following</span>
+                    )}
                   </button>
                 </li>
               ))}
@@ -150,6 +159,70 @@ function LikedByModal({ postId, count, onClose }: { postId: string; count: numbe
       </motion.div>
     </motion.div>,
     document.body
+  );
+}
+
+function LikedByLine({ postId, count, followingIds }: { postId: string; count: number; followingIds: Set<string> }) {
+  const [followedLikers, setFollowedLikers] = useState<{ uid: string; name: string }[]>([]);
+
+  useEffect(() => {
+    if (count === 0 || followingIds.size === 0) {
+      setFollowedLikers([]);
+      return;
+    }
+    let cancelled = false;
+    const fetchFollowedLikers = async () => {
+      try {
+        const ids = Array.from(followingIds).slice(0, 10); // Firestore 'in' cap
+        if (ids.length === 0) return;
+        const q = query(
+          collection(db, 'post_upvotes'),
+          where('postId', '==', postId),
+          where('userId', 'in', ids),
+          limit(3)
+        );
+        const snap = await getDocs(q);
+        const userIds = snap.docs.map(d => d.data().userId as string).filter(Boolean);
+        if (userIds.length === 0) {
+          if (!cancelled) setFollowedLikers([]);
+          return;
+        }
+        const users = await Promise.all(
+          userIds.map(async (uid) => {
+            try {
+              const userSnap = await getDoc(doc(db, 'users', uid));
+              if (userSnap.exists()) return { uid, name: userSnap.data().name || 'User' };
+            } catch {}
+            return { uid, name: 'User' };
+          })
+        );
+        if (!cancelled) setFollowedLikers(users);
+      } catch {
+        if (!cancelled) setFollowedLikers([]);
+      }
+    };
+    fetchFollowedLikers();
+    return () => { cancelled = true; };
+  }, [postId, count, followingIds]);
+
+  if (followedLikers.length === 0) return null;
+
+  const [first, ...rest] = followedLikers;
+  const othersCount = count - followedLikers.length;
+
+  let text: string;
+  if (followedLikers.length === 1) {
+    text = othersCount > 0 ? `Liked by ${first.name} and ${othersCount} other${othersCount !== 1 ? 's' : ''}` : `Liked by ${first.name}`;
+  } else if (othersCount > 0) {
+    text = `Liked by ${first.name}, ${rest[0].name} and ${othersCount} other${othersCount !== 1 ? 's' : ''}`;
+  } else {
+    text = `Liked by ${first.name}${rest.length ? ', ' + rest.map(r => r.name).join(', ') : ''}`;
+  }
+
+  return (
+    <p className="text-[12.5px] text-luxury-ink/45 font-medium mt-1.5">
+      {text}
+    </p>
   );
 }
 
@@ -202,16 +275,28 @@ interface PostCardProps {
   onSave?: (post: Post) => void;
 }
 
+function toDateSafe(value: any): Date | null {
+  if (!value) return null;
+  if (typeof value.toDate === 'function') return value.toDate();
+  if (typeof value.seconds === 'number') return new Date(value.seconds * 1000);
+  if (typeof value._seconds === 'number') return new Date(value._seconds * 1000);
+  if (typeof value === 'string' || typeof value === 'number') {
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  return null;
+}
+
 function timeAgo(date: any): string {
-  if (!date?.toDate) return '';
+  const then = toDateSafe(date);
+  if (!then) return '';
   const now = Date.now();
-  const then = date.toDate().getTime();
-  const diff = Math.floor((now - then) / 1000);
+  const diff = Math.floor((now - then.getTime()) / 1000);
   if (diff < 60) return 'just now';
   if (diff < 3600) return `${Math.floor(diff / 60)}m`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
   if (diff < 604800) return `${Math.floor(diff / 86400)}d`;
-  return date.toDate().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return then.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
 /**
@@ -265,6 +350,7 @@ function ContentPreview({ text, onClick }: { text: string; onClick: () => void }
 
 export default function PostCard({ post, hasUpvoted, hasDownvoted, hasSaved, onClick, onUpvote, onDownvote, onShare, onSave }: PostCardProps) {
   const { showToast } = useToast();
+  const { followingIds } = useFollowingIds();
 
   // The feed's batch user resolver pre-populates authorProfilePicture for all posts,
   // so this fallback getDoc almost never fires in normal usage. It only activates
@@ -388,7 +474,7 @@ export default function PostCard({ post, hasUpvoted, hasDownvoted, hasSaved, onC
           <div className="flex items-center gap-2 min-w-0">
             {/* Avatar */}
             {displayInfo.isAnonymous ? (
-              <div className="w-9 h-9 rounded-full flex items-center justify-center text-[13px] font-bold overflow-hidden shrink-0 ring-1 ring-inset ring-luxury-ink/[0.06] bg-purple-500/10 text-purple-600">
+              <div className="w-9 h-9 rounded-full flex items-center justify-center text-[13px] font-bold overflow-hidden shrink-0 ring-1 ring-inset ring-luxury-ink/6 bg-purple-500/10 text-purple-600">
                 {displayInfo.name[0]?.toUpperCase()}
               </div>
             ) : (
@@ -396,22 +482,22 @@ export default function PostCard({ post, hasUpvoted, hasDownvoted, hasSaved, onC
                 src={liveProfilePicture}
                 name={displayInfo.name}
                 size={36}
-                className="ring-1 ring-inset ring-luxury-ink/[0.06]"
+                className="ring-1 ring-inset ring-luxury-ink/6"
               />
             )}
             
             <div className="flex items-center gap-1.5 min-w-0 flex-1 flex-wrap">
-              <span className="text-[13px] sm:text-[14px] font-semibold text-luxury-ink hover:underline cursor-pointer truncate max-w-[7.5rem] sm:max-w-[11rem]">{displayInfo.name}</span>
+              <span className="text-[13px] sm:text-[14px] font-semibold text-luxury-ink hover:underline cursor-pointer truncate max-w-30 sm:max-w-44">{displayInfo.name}</span>
               <span className="text-[13px] text-luxury-ink/40">·</span>
               <span className="text-[13px] sm:text-[14px] text-luxury-ink/50 font-medium shrink-0">{timeAgo(post.createdAt)}</span>
               <span className="text-[13px] text-luxury-ink/40 hidden sm:inline">·</span>
-              <span className="text-[13px] sm:text-[14px] text-luxury-ink/50 font-medium truncate max-w-[6rem] sm:max-w-[11rem] hidden sm:inline">{displayInfo.school}</span>
+              <span className="text-[13px] sm:text-[14px] text-luxury-ink/50 font-medium truncate max-w-24 sm:max-w-44 hidden sm:inline">{displayInfo.school}</span>
             </div>
 
             <div className="flex items-center gap-1.5 shrink-0">
               {post.badge && post.badge !== 'none' ? (
                 <span className={`flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest ${
-                  post.badge === 'HOT' ? 'bg-gradient-to-r from-amber-500 to-rose-500 text-white animate-pulse' :
+                  post.badge === 'HOT' ? 'bg-linear-to-r from-amber-500 to-rose-500 text-white animate-pulse' :
                   post.badge === 'TRENDING' ? 'bg-pink-500/10 text-pink-500' :
                   post.badge === 'RISING' ? 'bg-brand-teal/10 text-brand-teal' :
                   'bg-emerald-500/10 text-emerald-500' // NEW
@@ -629,6 +715,7 @@ export default function PostCard({ post, hasUpvoted, hasDownvoted, hasSaved, onC
             </button>
           </div>
         </div>
+        <LikedByLine postId={post.id} count={post.upvotesCount || 0} followingIds={followingIds} />
       </motion.article>
 
       {/* Report Modal */}
@@ -645,6 +732,7 @@ export default function PostCard({ post, hasUpvoted, hasDownvoted, hasSaved, onC
           <LikedByModal
             postId={post.id}
             count={post.upvotesCount || 0}
+            followingIds={followingIds}
             onClose={() => setShowLikedBy(false)}
           />
         )}
