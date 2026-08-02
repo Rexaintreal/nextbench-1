@@ -722,8 +722,7 @@ service cloud.firestore {
 
     // === POST UPVOTES ===
     match /post_upvotes/{upvoteId} {
-      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow get, list: if isSignedIn();
       allow create: if isVerified()
         && incoming().userId == request.auth.uid
         && canInteractWithPost(incoming().postId);
