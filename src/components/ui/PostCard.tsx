@@ -81,7 +81,7 @@ function LikedByModal({ postId, count, onClose }: { postId: string; count: numbe
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-luxury-ink/30 backdrop-blur-sm"
+      className="fixed inset-0 z-200 flex items-center justify-center p-4 bg-luxury-ink/30 backdrop-blur-sm"
       onClick={onClose}
     >
       <motion.div
@@ -202,16 +202,28 @@ interface PostCardProps {
   onSave?: (post: Post) => void;
 }
 
+function toDateSafe(value: any): Date | null {
+  if (!value) return null;
+  if (typeof value.toDate === 'function') return value.toDate();
+  if (typeof value.seconds === 'number') return new Date(value.seconds * 1000);
+  if (typeof value._seconds === 'number') return new Date(value._seconds * 1000);
+  if (typeof value === 'string' || typeof value === 'number') {
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  return null;
+}
+
 function timeAgo(date: any): string {
-  if (!date?.toDate) return '';
+  const then = toDateSafe(date);
+  if (!then) return '';
   const now = Date.now();
-  const then = date.toDate().getTime();
-  const diff = Math.floor((now - then) / 1000);
+  const diff = Math.floor((now - then.getTime()) / 1000);
   if (diff < 60) return 'just now';
   if (diff < 3600) return `${Math.floor(diff / 60)}m`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
   if (diff < 604800) return `${Math.floor(diff / 86400)}d`;
-  return date.toDate().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return then.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
 /**
@@ -388,7 +400,7 @@ export default function PostCard({ post, hasUpvoted, hasDownvoted, hasSaved, onC
           <div className="flex items-center gap-2 min-w-0">
             {/* Avatar */}
             {displayInfo.isAnonymous ? (
-              <div className="w-9 h-9 rounded-full flex items-center justify-center text-[13px] font-bold overflow-hidden shrink-0 ring-1 ring-inset ring-luxury-ink/[0.06] bg-purple-500/10 text-purple-600">
+              <div className="w-9 h-9 rounded-full flex items-center justify-center text-[13px] font-bold overflow-hidden shrink-0 ring-1 ring-inset ring-luxury-ink/6 bg-purple-500/10 text-purple-600">
                 {displayInfo.name[0]?.toUpperCase()}
               </div>
             ) : (
@@ -396,22 +408,22 @@ export default function PostCard({ post, hasUpvoted, hasDownvoted, hasSaved, onC
                 src={liveProfilePicture}
                 name={displayInfo.name}
                 size={36}
-                className="ring-1 ring-inset ring-luxury-ink/[0.06]"
+                className="ring-1 ring-inset ring-luxury-ink/6"
               />
             )}
             
             <div className="flex items-center gap-1.5 min-w-0 flex-1 flex-wrap">
-              <span className="text-[13px] sm:text-[14px] font-semibold text-luxury-ink hover:underline cursor-pointer truncate max-w-[7.5rem] sm:max-w-[11rem]">{displayInfo.name}</span>
+              <span className="text-[13px] sm:text-[14px] font-semibold text-luxury-ink hover:underline cursor-pointer truncate max-w-30 sm:max-w-44">{displayInfo.name}</span>
               <span className="text-[13px] text-luxury-ink/40">·</span>
               <span className="text-[13px] sm:text-[14px] text-luxury-ink/50 font-medium shrink-0">{timeAgo(post.createdAt)}</span>
               <span className="text-[13px] text-luxury-ink/40 hidden sm:inline">·</span>
-              <span className="text-[13px] sm:text-[14px] text-luxury-ink/50 font-medium truncate max-w-[6rem] sm:max-w-[11rem] hidden sm:inline">{displayInfo.school}</span>
+              <span className="text-[13px] sm:text-[14px] text-luxury-ink/50 font-medium truncate max-w-24 sm:max-w-44 hidden sm:inline">{displayInfo.school}</span>
             </div>
 
             <div className="flex items-center gap-1.5 shrink-0">
               {post.badge && post.badge !== 'none' ? (
                 <span className={`flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest ${
-                  post.badge === 'HOT' ? 'bg-gradient-to-r from-amber-500 to-rose-500 text-white animate-pulse' :
+                  post.badge === 'HOT' ? 'bg-linear-to-r from-amber-500 to-rose-500 text-white animate-pulse' :
                   post.badge === 'TRENDING' ? 'bg-pink-500/10 text-pink-500' :
                   post.badge === 'RISING' ? 'bg-brand-teal/10 text-brand-teal' :
                   'bg-emerald-500/10 text-emerald-500' // NEW

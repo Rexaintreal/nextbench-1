@@ -35,6 +35,30 @@ interface ProfileProps {
   usernameResolvedUserId?: string;
 }
 
+function toDateSafe(value: any): Date | null {
+  if (!value) return null;
+  if (typeof value.toDate === 'function') return value.toDate();
+  if (typeof value.seconds === 'number') return new Date(value.seconds * 1000);
+  if (typeof value._seconds === 'number') return new Date(value._seconds * 1000);
+  if (typeof value === 'string' || typeof value === 'number') {
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  return null;
+}
+
+function timeAgo(date: any): string {
+  const then = toDateSafe(date);
+  if (!then) return '';
+  const now = Date.now();
+  const diff = Math.floor((now - then.getTime()) / 1000);
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+  if (diff < 604800) return `${Math.floor(diff / 86400)}d`;
+  return then.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
 function SortDropdown({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -1333,10 +1357,15 @@ export default function Profile({ usernameResolvedUserId }: ProfileProps) {
                   <div className="p-5 md:p-6">
                     <div className="flex items-start justify-between mb-3">
                       <div>
-                        <span className="inline-block px-2.5 py-1 bg-brand-teal/10 text-brand-teal rounded-full text-[10px] font-bold uppercase tracking-widest mb-2">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="inline-block px-2.5 py-1 bg-brand-teal/10 text-brand-teal rounded-full text-[10px] font-bold uppercase tracking-widest">
                           {post.type}
                         </span>
-                        <h3 className="text-base font-bold text-luxury-ink leading-snug">{post.title}</h3>
+                        <span className="text-[11px] font-semibold text-luxury-ink/40">
+                          {timeAgo(post.createdAt)}
+                        </span>
+                      </div>
+                      <h3 className="text-base font-bold text-luxury-ink leading-snug">{post.title}</h3>
                       </div>
                       {post.status === 'pending' && (
                         <span className="bg-amber-500/10 text-amber-500 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest shrink-0 ml-3">Pending</span>
@@ -1605,7 +1634,7 @@ export default function Profile({ usernameResolvedUserId }: ProfileProps) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-6"
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-100 flex items-center justify-center p-6"
             onClick={() => setShowBlockConfirm(false)}
           >
             <motion.div

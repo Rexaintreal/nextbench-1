@@ -316,6 +316,59 @@ service cloud.firestore {
       allow delete: if isVerified() && isValidId(productId) && (request.auth.uid == existing().sellerId || isAdmin());
     }
 
+    // === BUY REQUESTS ===
+    function isValidBuyRequest(data) {
+      return data.keys().hasAll(['requesterId', 'requesterName', 'requesterSchool', 'title', 'description', 'category', 'tags', 'status', 'createdAt', 'updatedAt'])
+        && data.requesterId is string && data.requesterId.size() > 0 && data.requesterId.size() <= 128
+        && data.requesterName is string && data.requesterName.size() > 0 && data.requesterName.size() <= 100
+        && data.requesterSchool is string && data.requesterSchool.size() > 0 && data.requesterSchool.size() <= 100
+        && (!data.keys().hasAny(['city']) || (data.city is string && data.city.size() > 0 && data.city.size() <= 100))
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 100
+        && data.description is string && data.description.size() <= 2000
+        && data.category is string && data.category.size() > 0 && data.category.size() <= 50
+        && data.tags is list && data.tags.size() <= 10
+        && data.status is string && data.status in ['active', 'fulfilled', 'closed']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && (!data.keys().hasAny(['maxBudget']) || data.maxBudget == null || (data.maxBudget is number && data.maxBudget >= 0 && data.maxBudget <= 100000))
+        && (!data.keys().hasAny(['image']) || data.image == null || (data.image is string && data.image.size() <= 2000))
+        && (!data.keys().hasAny(['requesterProfilePicture']) || data.requesterProfilePicture == null || (data.requesterProfilePicture is string && data.requesterProfilePicture.size() <= 2000));
+    }
+
+    function canAccessBuyRequest(data) {
+      return isAdmin()
+        || (isSignedIn() && (request.auth.uid == data.requesterId || !hasBlockRelationship(request.auth.uid, data.requesterId)));
+    }
+
+    match /buyRequests/{requestId} {
+      allow get: if canAccessBuyRequest(resource.data);
+      // Public browsing is served by getDiscoveryFeed/searchDiscovery server-side
+      allow list: if isAdmin()
+        || (isSignedIn() && resource.data.requesterId == request.auth.uid);
+
+      allow create: if isVerified()
+        && request.auth.uid == incoming().requesterId
+        && isValidBuyRequest(incoming())
+        && !incoming().keys().hasAny(['searchTokens', 'searchTokensUpdatedAt'])
+        && incoming().status == 'active'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isVerified() && (
+        // Requester updates their own request
+        (request.auth.uid == existing().requesterId
+          && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'category', 'tags', 'maxBudget', 'image', 'status', 'updatedAt'])
+          && incoming().status in ['active', 'fulfilled', 'closed']
+          && isValidBuyRequest(incoming())
+          && incoming().updatedAt == request.time)
+        ||
+        // Admin overrides
+        (isAdmin() && incoming().updatedAt == request.time)
+      );
+
+      allow delete: if isVerified() && (request.auth.uid == existing().requesterId || isAdmin());
+    }
+
     // === CHAT ROOMS ===
     function isValidChatRoom(data) {
       return data.keys().hasAll(['participants', 'updatedAt'])
