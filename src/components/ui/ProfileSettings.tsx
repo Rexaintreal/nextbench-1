@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Moon, Sun, ShieldAlert, Edit2, LogOut, Loader2, LifeBuoy, Bookmark, User, Settings, ExternalLink, Trash2, Lock, UserPlus } from 'lucide-react';
+import { X, Moon, Sun, ShieldAlert, Edit2, LogOut, Loader2, LifeBuoy, Bookmark, User, Settings, ExternalLink, Trash2, Lock, UserPlus, Clock } from 'lucide-react';
 import { collection, query, where, getDocs, deleteDoc, doc, getDoc, addDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { auth, db, getMessagingInstance } from '../../lib/firebase';
 import { signOut } from 'firebase/auth';
@@ -58,6 +58,22 @@ export default function ProfileSettings({ isOpen, onClose }: ProfileSettingsProp
       showToast('Failed to update privacy settings', 'error');
     }
   };
+
+  const isHideLastSeen = userData?.hideLastSeen || false;
+
+  const toggleHideLastSeen = async (val: boolean) => {
+    if (!user) return;
+    try {
+      await updateDoc(doc(db, 'users', user.uid), {
+        hideLastSeen: val
+      });
+      showToast('Privacy settings updated', 'success');
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to update privacy settings', 'error');
+    }
+  };
+
 
   useEffect(() => {
     const hasNotificationAPI = typeof window !== 'undefined' && 'Notification' in window;
@@ -380,6 +396,24 @@ export default function ProfileSettings({ isOpen, onClose }: ProfileSettingsProp
                         className={`w-12 h-6 rounded-full transition-all relative ${isFollowersOnlyDM ? 'bg-brand-teal' : 'bg-luxury-ink/20'}`}
                       >
                         <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${isFollowersOnlyDM ? 'translate-x-6' : 'translate-x-0'}`} />
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between p-4 rounded-xl bg-surface-soft/50 border mt-2" style={{ borderColor: 'var(--color-border)' }}>
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-brand-teal/10 rounded-lg text-brand-teal">
+                          <Clock size={20} />
+                        </div>
+                        <div>
+                          <p className="font-bold text-luxury-ink text-sm">Hide last seen</p>
+                          <p className="text-[10px] text-luxury-ink/50 uppercase tracking-widest">Others won't see when you were last active</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => toggleHideLastSeen(!isHideLastSeen)}
+                        className={`w-12 h-6 rounded-full transition-all relative ${isHideLastSeen ? 'bg-brand-teal' : 'bg-luxury-ink/20'}`}
+                      >
+                        <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${isHideLastSeen ? 'translate-x-6' : 'translate-x-0'}`} />
                       </button>
                     </div>
                   </div>
