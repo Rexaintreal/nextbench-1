@@ -224,6 +224,11 @@ service cloud.firestore {
           && incoming().chatPrivacy is map
           && incoming().chatPrivacy.keys().hasOnly(['followersOnly'])
           && incoming().chatPrivacy.followersOnly is bool)
+        ||
+        // Hide last-seen privacy toggle
+        (request.auth.uid == userId
+          && incoming().diff(existing()).affectedKeys().hasOnly(['hideLastSeen'])
+          && incoming().hideLastSeen is bool)
         );
 
       allow delete: if isAdmin();
