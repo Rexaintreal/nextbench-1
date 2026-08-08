@@ -500,9 +500,7 @@ export default function ProductDetail() {
                       <Star size={10} className="fill-brand-teal" />
                       <span className="text-[10px] text-brand-teal/70">({product.sellerReviewCount})</span>
                     </div>
-                  ) : (
-                    <span className="text-[9px] font-bold text-brand-teal bg-brand-teal/10 px-2 py-0.5 rounded uppercase tracking-wider shrink-0">New Seller</span>
-                  )}
+                  ) : null}
                 </div>
                 <p className="text-sm text-luxury-ink/50 font-medium flex items-center gap-1 mt-1">
                   {product.sellerSchool} 

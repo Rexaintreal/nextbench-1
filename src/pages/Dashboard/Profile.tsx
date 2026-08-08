@@ -1070,9 +1070,7 @@ export default function Profile({ usernameResolvedUserId }: ProfileProps) {
                   ({profileUser.reviewCount}) Reputation <Star size={11} className="text-brand-teal fill-brand-teal" />
                 </span>
               </div>
-            ) : (
-              <span className="text-xs font-bold text-brand-teal bg-brand-teal/10 px-2.5 py-1 rounded-lg uppercase tracking-wider">New Seller</span>
-            )}
+            ) : null}
             {profileUser.reputationBadges && profileUser.reputationBadges.map((badge: string) => (
               <span key={badge} className="px-2.5 py-1 bg-surface-soft border border-luxury-ink/10 text-luxury-ink/75 rounded-lg text-[10px] font-bold uppercase tracking-wider">
                 {badge}
